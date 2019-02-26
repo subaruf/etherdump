@@ -4,10 +4,15 @@
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <linux/if.h>
 #include <net/ethernet.h>
 #include <netpacket/packet.h>
 #include <netinet/if_ether.h>
+#include <pcap.h>
+
+#define CAPTURE_FILE_NAME "test.pcap"
+#define TCPDUMP_MAGIC 0xa1b2c3d4
 
 int set_promiscuous_mode(int soc, struct ifreq *req) {
 	if (ioctl(soc, SIOCGIFFLAGS, req) < 0) {
@@ -97,25 +102,67 @@ int print_ethernet(struct ether_header *eh, FILE *fp) {
 int main(int argc, char *argv[]) {
 	int soc, size;
 	u_char buf[2048];
-	if (argc <= 1) {
-		fprintf(stderr, "input device-name.");
+	FILE *cap_fp;
+	struct pcap_file_header pcap_header;
+	uint32_t jp_timezone;
+
+	if (argc != 3) {
+		char *help_msg = "---example---\n sudo ./etherdump eth0 1";
+		fprintf(stderr, "input device-name and pcap flag.\n");
+		fprintf(stderr, "%s\n", help_msg);
 		return 1;
 	}
 	if((soc = initialize_raw_socket(argv[1])) == -1) {
 		fprintf(stderr, "initialize_raw_socket: error:%s\n", argv[1]);
 		return -1;
 	}
+
+
+
+	if (!strcmp("1", argv[2])) {
+		printf("**********************************************************************");
+		cap_fp = fopen(CAPTURE_FILE_NAME, "wb+");
+		if (cap_fp == NULL) {
+			perror("fopen");
+			close(soc);
+			return -1;
+		}
+		memset(&pcap_header, 0, sizeof(struct pcap_file_header));
+		pcap_header.magic = TCPDUMP_MAGIC;
+		pcap_header.version_major = PCAP_VERSION_MAJOR;
+		pcap_header.version_minor = PCAP_VERSION_MINOR;
+		jp_timezone = 3600 * 9;
+		pcap_header.thiszone = jp_timezone;
+		pcap_header.sigfigs = 0;
+		pcap_header.snaplen = 2048;
+		pcap_header.linktype = DLT_EN10MB;
+		fwrite(&pcap_header, sizeof(struct pcap_file_header), 1, cap_fp);
+	}
+
+
+
+
+
+
 	while(1) {
+		struct pcap_pkthdr pcap_pkt_hdr;
 		if ((size = read(soc, buf, sizeof(buf))) <= 0) {
 			perror("read");
 		} else {
 			if (size >= sizeof(struct ether_header)) {
 				print_ethernet((struct ether_header *)buf, stdout);
+				if (!strcmp("1", argv[2])) {
+					gettimeofday(&pcap_pkt_hdr.ts, NULL);
+					pcap_pkt_hdr.len = pcap_pkt_hdr.caplen = size;
+					fwrite(&pcap_pkt_hdr, sizeof(struct pcap_pkthdr), 1, cap_fp);
+					fwrite(buf, size, 1, cap_fp);
+				}
 			} else {
 				fprintf(stderr, "read size(%d) < %ld\n", size, sizeof(struct ether_header));
 			}
 		}
 	}
 	close(soc);
+	fclose(cap_fp);
 	return 0;
 }
