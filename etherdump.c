@@ -116,11 +116,7 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "initialize_raw_socket: error:%s\n", argv[1]);
 		return -1;
 	}
-
-
-
 	if (!strcmp("1", argv[2])) {
-		printf("**********************************************************************");
 		cap_fp = fopen(CAPTURE_FILE_NAME, "wb+");
 		if (cap_fp == NULL) {
 			perror("fopen");
@@ -138,18 +134,12 @@ int main(int argc, char *argv[]) {
 		pcap_header.linktype = DLT_EN10MB;
 		fwrite(&pcap_header, sizeof(struct pcap_file_header), 1, cap_fp);
 	}
-
-
-
-
-
-
 	while(1) {
 		struct pcap_pkthdr pcap_pkt_hdr;
 		if ((size = read(soc, buf, sizeof(buf))) <= 0) {
 			perror("read");
 		} else {
-			if (size >= sizeof(struct ether_header)) {
+			if (sizeof(struct ether_header) <= size) {
 				print_ethernet((struct ether_header *)buf, stdout);
 				if (!strcmp("1", argv[2])) {
 					gettimeofday(&pcap_pkt_hdr.ts, NULL);
